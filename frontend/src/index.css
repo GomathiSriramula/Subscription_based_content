@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+	min-height: 100%;
+	width: 100%;
+}
+
+html,
+body {
+	overflow-y: auto;
+	overflow-x: hidden;
+}
+
+:root {
+	color-scheme: dark;
+}
+
+:root.theme-light {
+	color-scheme: light;
+}
+
+:root.theme-light .bg-slate-950 { background-color: #f8fafc !important; }
+:root.theme-light .bg-slate-900 { background-color: #ffffff !important; }
+:root.theme-light .bg-slate-800 { background-color: #f1f5f9 !important; }
+:root.theme-light .bg-slate-700 { background-color: #e2e8f0 !important; }
+
+:root.theme-light .border-slate-800 { border-color: #e2e8f0 !important; }
+:root.theme-light .border-slate-700 { border-color: #cbd5e1 !important; }
+:root.theme-light .border-slate-600 { border-color: #94a3b8 !important; }
+:root.theme-light .border-slate-500 { border-color: #64748b !important; }
+
+:root.theme-light .text-white { color: #0f172a !important; }
+:root.theme-light .text-slate-500 { color: #64748b !important; }
+:root.theme-light .text-slate-400 { color: #475569 !important; }
+:root.theme-light .text-slate-300 { color: #334155 !important; }
+:root.theme-light .text-slate-200 { color: #1e293b !important; }
+:root.theme-light .text-slate-900 { color: #0f172a !important; }
+
+:root.theme-light .placeholder-slate-500::placeholder { color: #64748b !important; }
+
+:root.theme-light .shadow-2xl,
+:root.theme-light .shadow-xl,
+:root.theme-light .shadow-lg {
+	--tw-shadow-color: rgb(15 23 42 / 0.12);
+}
+
+body,
+button,
+input,
+textarea,
+select,
+a,
+div {
+	transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+}
