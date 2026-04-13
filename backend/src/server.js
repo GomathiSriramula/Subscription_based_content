@@ -7,6 +7,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { MongoClient } from 'mongodb';
 import Razorpay from 'razorpay';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -30,9 +31,17 @@ const razorpayClient = isRazorpayConfigured
     })
   : null;
 
+const mongoUri = (process.env.MONGO_URI || process.env.MONGODB_URI || '').trim();
+if (!mongoUri) {
+  throw new Error('Missing MongoDB connection string. Set MONGO_URI or MONGODB_URI to your MongoDB Atlas URI.');
+}
+const mongoDbName = (process.env.MONGODB_DB_NAME || 'content-access').trim();
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dbPath = path.join(__dirname, '..', 'data', 'db.json');
+const mongoClient = new MongoClient(mongoUri);
+let mongoDatabasePromise = null;
 
 app.use(
   cors({
@@ -53,12 +62,89 @@ app.use(
 app.use(express.json());
 
 async function readDb() {
-  const raw = await fs.readFile(dbPath, 'utf8');
-  return JSON.parse(raw);
+  const database = await getMongoDatabase();
+  const [users, subscriptions, subscriptionPlans, books] = await Promise.all([
+    database.collection('users').find({}).toArray(),
+    database.collection('subscriptions').find({}).toArray(),
+    database.collection('subscription_plans').find({}).toArray(),
+    database.collection('books').find({}).toArray(),
+  ]);
+
+  return {
+    users: users.map(stripMongoId),
+    subscriptions: subscriptions.map(stripMongoId),
+    subscription_plans: subscriptionPlans.map(stripMongoId),
+    books: books.map(stripMongoId),
+  };
 }
 
 async function writeDb(db) {
-  await fs.writeFile(dbPath, JSON.stringify(db, null, 2));
+  const database = await getMongoDatabase();
+  const collections = {
+    users: Array.isArray(db.users) ? db.users : [],
+    subscriptions: Array.isArray(db.subscriptions) ? db.subscriptions : [],
+    subscription_plans: Array.isArray(db.subscription_plans) ? db.subscription_plans : [],
+    books: Array.isArray(db.books) ? db.books : [],
+  };
+
+  await Promise.all(
+    Object.entries(collections).map(async ([collectionName, documents]) => {
+      const collection = database.collection(collectionName);
+      await collection.deleteMany({});
+      if (documents.length > 0) {
+        await collection.insertMany(documents);
+      }
+    })
+  );
+}
+
+function stripMongoId(document) {
+  const { _id, ...rest } = document;
+  return rest;
+}
+
+async function seedDatabase(database) {
+  const hasSeedFile = await fs
+    .access(dbPath)
+    .then(() => true)
+    .catch(() => false);
+
+  if (!hasSeedFile) {
+    const plansCollection = database.collection('subscription_plans');
+    if ((await plansCollection.countDocuments()) === 0) {
+      await plansCollection.insertMany(getDefaultSubscriptionPlans());
+    }
+    return;
+  }
+
+  const raw = await fs.readFile(dbPath, 'utf8');
+  const seedData = JSON.parse(raw);
+  const seedCollections = [
+    ['users', seedData.users || []],
+    ['subscriptions', seedData.subscriptions || []],
+    ['subscription_plans', seedData.subscription_plans || getDefaultSubscriptionPlans()],
+    ['books', seedData.books || []],
+  ];
+
+  for (const [collectionName, documents] of seedCollections) {
+    const collection = database.collection(collectionName);
+    if ((await collection.countDocuments()) === 0 && documents.length > 0) {
+      await collection.insertMany(documents);
+    }
+  }
+}
+
+async function getMongoDatabase() {
+  if (!mongoDatabasePromise) {
+    mongoDatabasePromise = (async () => {
+      await mongoClient.connect();
+      const database = mongoClient.db(mongoDbName);
+      await seedDatabase(database);
+      return database;
+    })();
+  }
+
+  return mongoDatabasePromise;
 }
 
 function getDefaultSubscriptionPlans() {
@@ -633,7 +719,17 @@ app.post('/api/admin/users/:userId/demote', authRequired, adminRequired, async (
   }
 });
 
-app.listen(port, () => {
-  // Keep startup log minimal and clear for local development.
-  console.log(`Backend running on http://localhost:${port}`);
-});
+async function startServer() {
+  try {
+    await getMongoDatabase();
+    app.listen(port, () => {
+      // Keep startup log minimal and clear for local development.
+      console.log(`Backend running on http://localhost:${port}`);
+    });
+  } catch (error) {
+    console.error('Failed to connect to MongoDB before starting the server:', error);
+    process.exit(1);
+  }
+}
+
+startServer();

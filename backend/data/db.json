@@ -63,6 +63,14 @@
       "passwordHash": "$2a$10$WddXZs6iBSJPrmTsZLp69e8zZLlGKLWwaYmxD2y7NthQA7yfRG0.m",
       "role": "user",
       "createdAt": "2026-04-11T11:08:24.746Z"
+    },
+    {
+      "id": "1b3e001d-1f4f-450c-a401-ea9cfa8fe9c9",
+      "email": "sanjana@gmail.com",
+      "fullName": "Sanjana",
+      "passwordHash": "$2a$10$hBv/z8H5sHVcY0fvjzl5Nu99Mj4zFGpvlgALIeupZwbHT76vJa7/e",
+      "role": "user",
+      "createdAt": "2026-04-13T12:51:32.189Z"
     }
   ],
   "subscriptions": [
@@ -169,6 +177,19 @@
       "amount": 30000,
       "created_at": "2026-04-12T08:45:23.310Z",
       "updated_at": "2026-04-12T08:45:54.979Z"
+    },
+    {
+      "id": "b163e687-5931-4d27-be48-ef7678730151",
+      "user_id": "1b3e001d-1f4f-450c-a401-ea9cfa8fe9c9",
+      "status": "active",
+      "start_date": "2026-04-13T12:52:24.314Z",
+      "expiry_date": "2026-05-13T12:52:24.314Z",
+      "razorpay_order_id": "order_Scz2SKlaBGeLCq",
+      "razorpay_payment_id": "pay_Scz2d2eDIcqNoP",
+      "plan": "monthly",
+      "amount": 30000,
+      "created_at": "2026-04-13T12:51:47.854Z",
+      "updated_at": "2026-04-13T12:52:24.314Z"
     }
   ],
   "subscription_plans": [

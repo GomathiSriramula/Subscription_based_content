@@ -6,8 +6,8 @@ A full-stack subscription-based content access application.
 
 - Frontend: React + TypeScript + Vite + Tailwind CSS
 - Backend: Node.js + Express
+- Database: MongoDB
 - Payments: Razorpay
-- Data store: JSON file (development)
 
 ## Project Structure
 
@@ -21,6 +21,8 @@ A full-stack subscription-based content access application.
 1. Go to backend folder.
 2. Install dependencies.
 3. Start development server.
+4. Make sure `MONGO_URI` or `MONGODB_URI` points to your MongoDB Atlas cluster.
+5. Add your current IP address to the Atlas network access list.
 
 ### Frontend
 
