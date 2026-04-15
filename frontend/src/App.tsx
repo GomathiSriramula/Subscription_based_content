@@ -7,9 +7,15 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import BooksPage from './pages/BooksPage';
+import BookDetailsPage from './pages/BookDetailsPage';
+import SubscriptionPage from './pages/SubscriptionPage';
+import ProfilePage from './pages/ProfilePage';
 import AdminPage from './pages/AdminPage';
+import AdminUsersPage from './pages/AdminUsersPage';
+import AdminTransactionsPage from './pages/AdminTransactionsPage';
+import { EBook } from './types';
 
-type Page = 'home' | 'login' | 'register' | 'dashboard' | 'books' | 'admin';
+type Page = 'home' | 'login' | 'register' | 'dashboard' | 'books' | 'book-details' | 'subscription' | 'profile' | 'admin' | 'admin-users' | 'admin-transactions';
 type Theme = 'dark' | 'light';
 
 const THEME_STORAGE_KEY = 'pagevault_theme';
@@ -25,6 +31,7 @@ function getInitialTheme(): Theme {
 function AppInner() {
   const { user, loading } = useAuth();
   const [page, setPage] = useState<Page>('home');
+  const [selectedBook, setSelectedBook] = useState<EBook | null>(null);
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
 
   useEffect(() => {
@@ -37,11 +44,18 @@ function AppInner() {
     if (!loading) {
       if (user && (page === 'home' || page === 'login' || page === 'register')) {
         setPage('dashboard');
+      } else if (!user && page !== 'home' && page !== 'login' && page !== 'register') {
+        setPage('login');
       }
     }
-  }, [user, loading]);
+  }, [user, loading, page]);
 
   const navigate = (p: string) => setPage(p as Page);
+
+  const openBookDetails = (book: EBook) => {
+    setSelectedBook(book);
+    setPage('book-details');
+  };
 
   if (loading) {
     return (
@@ -93,9 +107,14 @@ function AppInner() {
       {page === 'home' && <HomePage onNavigate={navigate} />}
       {page === 'login' && <LoginPage onNavigate={navigate} />}
       {page === 'register' && <RegisterPage onNavigate={navigate} />}
-      {page === 'dashboard' && requireAuth(<DashboardPage onNavigate={navigate} />)}
-      {page === 'books' && requireAuth(<BooksPage onNavigate={navigate} />)}
+      {page === 'dashboard' && requireAuth(<DashboardPage onNavigate={navigate} onOpenBookDetails={openBookDetails} />)}
+      {page === 'books' && requireAuth(<BooksPage onNavigate={navigate} onOpenBookDetails={openBookDetails} />)}
+      {page === 'book-details' && requireAuth(<BookDetailsPage onNavigate={navigate} book={selectedBook} />)}
+      {page === 'subscription' && requireAuth(<SubscriptionPage onNavigate={navigate} />)}
+      {page === 'profile' && requireAuth(<ProfilePage onNavigate={navigate} />)}
       {page === 'admin' && requireAdmin(<AdminPage onNavigate={navigate} />)}
+      {page === 'admin-users' && requireAdmin(<AdminUsersPage onNavigate={navigate} />)}
+      {page === 'admin-transactions' && requireAdmin(<AdminTransactionsPage onNavigate={navigate} />)}
     </div>
   );
 }

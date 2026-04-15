@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookOpen, LogOut, User, Menu, X, LayoutDashboard, Library, Shield } from 'lucide-react';
+import { BookOpen, LogOut, User, Menu, X, LayoutDashboard, Library, Shield, Users, ReceiptText, Crown, UserCircle2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface HeaderProps {
@@ -19,8 +19,16 @@ export default function Header({ currentPage, onNavigate }: HeaderProps) {
   const navItems = user
     ? [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'profile', label: 'Profile', icon: UserCircle2 },
         { id: 'books', label: 'Library', icon: Library },
-        ...(user.role === 'admin' ? [{ id: 'admin', label: 'Admin', icon: Shield }] : []),
+        ...(user.role !== 'admin' ? [{ id: 'subscription', label: 'Subscription', icon: Crown }] : []),
+        ...(user.role === 'admin'
+          ? [
+              { id: 'admin', label: 'Admin', icon: Shield },
+              { id: 'admin-users', label: 'Users', icon: Users },
+              { id: 'admin-transactions', label: 'Transactions', icon: ReceiptText },
+            ]
+          : []),
       ]
     : [];
 

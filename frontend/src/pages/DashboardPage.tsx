@@ -9,15 +9,19 @@ import {
   ChevronRight,
   User,
   Clock,
+  Search,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiRequest } from '../lib/api';
+import { FavoriteBookItem, getFavoriteBooks, toggleFavoriteBook } from '../lib/favorites';
+import { getRecentOpenedBooks, RecentBookItem, trackRecentlyOpenedBook } from '../lib/recentBooks';
 import { EBook, RazorpayPaymentResponse, SubscriptionPlan } from '../types';
 import BookCard from '../components/books/BookCard';
 import PDFViewer from '../components/books/PDFViewer';
 
 interface DashboardPageProps {
   onNavigate: (page: string) => void;
+  onOpenBookDetails?: (book: EBook) => void;
 }
 
 interface UserBook extends EBook {
@@ -45,7 +49,7 @@ function loadRazorpayScript(): Promise<boolean> {
   });
 }
 
-export default function DashboardPage({ onNavigate }: DashboardPageProps) {
+export default function DashboardPage({ onNavigate, onOpenBookDetails }: DashboardPageProps) {
   const { user, subscription, isSubscribed, refreshSubscription, session } = useAuth();
   const isAdmin = user?.role === 'admin';
 
@@ -53,6 +57,10 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   const [books, setBooks] = useState<UserBook[]>([]);
   const [booksLoading, setBooksLoading] = useState(true);
   const [selectedBook, setSelectedBook] = useState<EBook | null>(null);
+  const [booksSearch, setBooksSearch] = useState('');
+  const [booksCategory, setBooksCategory] = useState('All');
+  const [recentOpenedBooks, setRecentOpenedBooks] = useState<RecentBookItem[]>([]);
+  const [favoriteBooks, setFavoriteBooks] = useState<FavoriteBookItem[]>([]);
 
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState('');
@@ -98,6 +106,24 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
     loadPlans();
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setRecentOpenedBooks([]);
+      return;
+    }
+
+    setRecentOpenedBooks(getRecentOpenedBooks(user.id));
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setFavoriteBooks([]);
+      return;
+    }
+
+    setFavoriteBooks(getFavoriteBooks(user.id));
+  }, [user?.id]);
 
   const handleSubscribe = useCallback(async () => {
     setPaymentError('');
@@ -220,7 +246,75 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   };
 
+  const remainingDays = daysLeft();
+
+  const getSubscriptionStatusLabel = () => {
+    if (!subscription) return 'Inactive';
+    if (subscription.status === 'pending') return 'Pending';
+    if (subscription.status === 'expired' || (subscription.expiry_date && remainingDays <= 0)) return 'Expired';
+    return 'Active';
+  };
+
+  const getSubscriptionStatusBadgeClasses = () => {
+    const status = getSubscriptionStatusLabel();
+    if (status === 'Active') return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+    if (status === 'Pending') return 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+    if (status === 'Expired') return 'bg-rose-500/20 text-rose-300 border-rose-500/30';
+    return 'bg-slate-800 text-slate-400 border-slate-700';
+  };
+
+  const getPlanLabel = () => {
+    if (!subscription?.plan) return 'N/A';
+    if (subscription.plan === 'monthly') return 'Monthly';
+    if (subscription.plan === 'yearly') return 'Yearly';
+    return subscription.plan
+      .replace(/[-_]+/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const booksCategories = [
+    'All',
+    ...Array.from(new Set(books.map((book) => book.category).filter(Boolean))).sort((left, right) => left.localeCompare(right)),
+  ];
+
+  const filteredBooks = books.filter((book) => {
+    const query = booksSearch.trim().toLowerCase();
+    const matchesSearch = !query || (
+      book.title.toLowerCase().includes(query) ||
+      book.author.toLowerCase().includes(query)
+    );
+    const matchesCategory = booksCategory === 'All' || book.category === booksCategory;
+    return matchesSearch && matchesCategory;
+  });
+
   const unlockedCount = books.filter((book) => !book.is_locked).length;
+  const quickAccessBooks = books
+    .filter((book) => (isAdmin ? true : !book.is_locked))
+    .slice(0, 4);
+  const featuredBooks = filteredBooks.filter((book) => Boolean(book.featured));
+  const regularBooks = filteredBooks.filter((book) => !book.featured);
+
+  const handleOpenBook = (book: EBook) => {
+    if (user?.id) {
+      setRecentOpenedBooks(trackRecentlyOpenedBook(user.id, book));
+    }
+
+    if (onOpenBookDetails) {
+      onOpenBookDetails(book);
+      return;
+    }
+    setSelectedBook(book);
+  };
+
+  const handleToggleFavorite = (book: EBook) => {
+    if (!user?.id) {
+      return;
+    }
+
+    setFavoriteBooks(toggleFavoriteBook(user.id, book));
+  };
+
+  const favoriteBookIds = new Set(favoriteBooks.map((item) => item.bookId));
 
   return (
     <div className="min-h-screen bg-slate-950">
@@ -240,6 +334,102 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             </div>
           </div>
         </div>
+
+        {!isAdmin && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-white font-semibold">Subscription Status</h2>
+                <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${getSubscriptionStatusBadgeClasses()}`}>
+                  {getSubscriptionStatusLabel()}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-slate-800 border border-slate-700 rounded-lg p-3">
+                  <p className="text-slate-500 text-xs uppercase tracking-wide mb-1">Plan</p>
+                  <p className="text-slate-200 font-medium">{isSubscribed ? getPlanLabel() : 'No Plan'}</p>
+                </div>
+                <div className="bg-slate-800 border border-slate-700 rounded-lg p-3">
+                  <p className="text-slate-500 text-xs uppercase tracking-wide mb-1">Expiry Date</p>
+                  <p className="text-slate-200 font-medium">{isSubscribed ? formatDate(subscription?.expiry_date ?? null) : 'N/A'}</p>
+                </div>
+                <div className="bg-slate-800 border border-slate-700 rounded-lg p-3">
+                  <p className="text-slate-500 text-xs uppercase tracking-wide mb-1">Days Left</p>
+                  <p className={`font-medium ${remainingDays > 0 ? 'text-emerald-300' : 'text-slate-400'}`}>
+                    {remainingDays}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-white font-semibold">Quick Access Books</h2>
+                <button
+                  onClick={() => onNavigate('books')}
+                  className="text-xs text-amber-400 hover:text-amber-300 font-medium"
+                >
+                  View All
+                </button>
+              </div>
+
+              {booksLoading ? (
+                <p className="text-slate-500 text-sm">Loading quick access books...</p>
+              ) : quickAccessBooks.length === 0 ? (
+                <p className="text-slate-500 text-sm">
+                  {isSubscribed
+                    ? 'No books are available right now.'
+                    : 'Subscribe to unlock quick access to premium books.'}
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {quickAccessBooks.map((book) => (
+                    <button
+                      key={book.id}
+                      onClick={() => handleOpenBook(book)}
+                      className="w-full text-left bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg px-3 py-2.5 transition-colors"
+                    >
+                      <p className="text-slate-200 text-sm font-medium line-clamp-1">{book.title}</p>
+                      <p className="text-slate-500 text-xs line-clamp-1">{book.author}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-white font-semibold">Recently Opened</h2>
+                <span className="text-xs text-slate-500">{recentOpenedBooks.length}</span>
+              </div>
+
+              {recentOpenedBooks.length === 0 ? (
+                <p className="text-slate-500 text-sm">Books you open will appear here.</p>
+              ) : (
+                <div className="space-y-2">
+                  {recentOpenedBooks.slice(0, 5).map((book) => (
+                    <button
+                      key={book.bookId}
+                      onClick={() => {
+                        const matchedBook = books.find((entry) => entry.id === book.bookId);
+                        if (matchedBook) {
+                          handleOpenBook(matchedBook);
+                        } else {
+                          onNavigate('books');
+                        }
+                      }}
+                      className="w-full text-left bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg px-3 py-2.5 transition-colors"
+                    >
+                      <p className="text-slate-200 text-sm font-medium line-clamp-1">{book.title}</p>
+                      <p className="text-slate-500 text-xs line-clamp-1">{book.author}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
           {!isAdmin && (
@@ -270,8 +460,8 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                 <span className="text-slate-400 text-sm">Days Remaining</span>
                 <Clock size={18} className="text-emerald-400" />
               </div>
-              <p className={`text-xl font-bold ${isSubscribed ? 'text-emerald-400' : 'text-slate-500'}`}>
-                {isSubscribed ? daysLeft() : '--'}
+              <p className={`text-xl font-bold ${remainingDays > 0 ? 'text-emerald-400' : 'text-slate-500'}`}>
+                {remainingDays}
               </p>
               <p className="text-slate-500 text-xs mt-1">
                 {isSubscribed ? `Expires ${formatDate(subscription?.expiry_date ?? null)}` : 'Not subscribed'}
@@ -297,6 +487,10 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
                   <div>
                     <span className="text-slate-500">Expires</span>
                     <span className="text-slate-300 ml-2">{formatDate(subscription?.expiry_date ?? null)}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Days Left</span>
+                    <span className="text-emerald-300 ml-2 font-medium">{remainingDays}</span>
                   </div>
                   <div>
                     <span className="text-slate-500">Plan</span>
@@ -405,7 +599,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
             {!isAdmin && (
               <button
-                onClick={() => !isSubscribed && handleSubscribe()}
+                onClick={() => !isSubscribed && onNavigate('subscription')}
                 disabled={isSubscribed}
                 className="flex items-center gap-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 border border-slate-700 hover:border-slate-500 rounded-xl p-4 transition-all text-left group disabled:cursor-default"
               >
@@ -428,8 +622,68 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
 
         <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 mt-6">
           <div className="flex items-center justify-between mb-4">
+            <h3 className="text-white font-semibold">Favorites</h3>
+            <span className="text-slate-500 text-xs">{favoriteBooks.length} saved</span>
+          </div>
+
+          {favoriteBooks.length === 0 ? (
+            <p className="text-slate-500 text-sm mb-2">Mark books as favorites to find them quickly later.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-2">
+              {favoriteBooks.slice(0, 6).map((favorite) => {
+                const matchedBook = books.find((book) => book.id === favorite.bookId);
+
+                return (
+                  <button
+                    key={favorite.bookId}
+                    onClick={() => {
+                      if (matchedBook) {
+                        handleOpenBook(matchedBook);
+                        return;
+                      }
+
+                      onNavigate('books');
+                    }}
+                    className="text-left bg-slate-800 border border-slate-700 rounded-lg p-3 hover:bg-slate-700 transition-colors"
+                  >
+                    <p className="text-slate-100 text-sm font-medium line-clamp-1">{favorite.title}</p>
+                    <p className="text-slate-500 text-xs line-clamp-1 mt-0.5">{favorite.author}</p>
+                    <p className="text-amber-300 text-xs mt-1">{favorite.category}</p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 mt-6">
+          <div className="flex items-center justify-between mb-4">
             <h3 className="text-white font-semibold">Your Books</h3>
             <span className="text-slate-500 text-xs">{isAdmin ? 'Admin full access' : 'Locked and unlocked by subscription'}</span>
+          </div>
+
+          <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="relative md:col-span-2">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                type="text"
+                value={booksSearch}
+                onChange={(event) => setBooksSearch(event.target.value)}
+                placeholder="Search books by title or author..."
+                className="w-full bg-slate-800 border border-slate-700 text-white placeholder-slate-500 pl-10 pr-4 py-2.5 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors text-sm"
+              />
+            </div>
+            <select
+              value={booksCategory}
+              onChange={(event) => setBooksCategory(event.target.value)}
+              className="bg-slate-800 border border-slate-700 text-white px-3 py-2.5 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-sm"
+            >
+              {booksCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
           </div>
 
           {booksLoading ? (
@@ -440,17 +694,47 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             </div>
           ) : books.length === 0 ? (
             <p className="text-slate-500 text-sm">No books available right now.</p>
+          ) : filteredBooks.length === 0 ? (
+            <p className="text-slate-500 text-sm">No books match your search or selected category.</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {books.slice(0, 6).map((book) => (
-                <BookCard
-                  key={book.id}
-                  book={book}
-                  isSubscribed={isSubscribed || isAdmin}
-                  hideAccessStatus={isAdmin}
-                  onRead={setSelectedBook}
-                />
-              ))}
+            <div className="space-y-5">
+              {featuredBooks.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-amber-300 mb-3">Featured</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {featuredBooks.map((book) => (
+                      <BookCard
+                        key={book.id}
+                        book={book}
+                        isSubscribed={isSubscribed || isAdmin}
+                        hideAccessStatus={isAdmin}
+                        onRead={handleOpenBook}
+                        isFavorite={favoriteBookIds.has(book.id)}
+                        onToggleFavorite={handleToggleFavorite}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {regularBooks.length > 0 && (
+                <div>
+                  {featuredBooks.length > 0 && <h4 className="text-sm font-semibold text-slate-300 mb-3">More Books</h4>}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {regularBooks.map((book) => (
+                      <BookCard
+                        key={book.id}
+                        book={book}
+                        isSubscribed={isSubscribed || isAdmin}
+                        hideAccessStatus={isAdmin}
+                        onRead={handleOpenBook}
+                        isFavorite={favoriteBookIds.has(book.id)}
+                        onToggleFavorite={handleToggleFavorite}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

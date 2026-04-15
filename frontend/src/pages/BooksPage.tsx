@@ -2,15 +2,18 @@ import { useState, useEffect } from 'react';
 import { Search, SlidersHorizontal, BookOpen, Lock, Crown } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiRequest } from '../lib/api';
-import { EBook } from '../types';
+import { getFavoriteBooks, toggleFavoriteBook } from '../lib/favorites';
+import { trackRecentlyOpenedBook } from '../lib/recentBooks';
+import { Category, EBook } from '../types';
 import BookCard from '../components/books/BookCard';
 import PDFViewer from '../components/books/PDFViewer';
 
 interface BooksPageProps {
   onNavigate: (page: string) => void;
+  onOpenBookDetails?: (book: EBook) => void;
 }
 
-export default function BooksPage({ onNavigate }: BooksPageProps) {
+export default function BooksPage({ onNavigate, onOpenBookDetails }: BooksPageProps) {
   const { isSubscribed, session, user } = useAuth();
   const [books, setBooks] = useState<EBook[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,16 +21,31 @@ export default function BooksPage({ onNavigate }: BooksPageProps) {
   const [category, setCategory] = useState('All');
   const [selectedBook, setSelectedBook] = useState<EBook | null>(null);
   const [categories, setCategories] = useState<string[]>(['All']);
+  const [favoriteBookIds, setFavoriteBookIds] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchBooks = async () => {
       try {
-        const payload = session?.access_token
-          ? await apiRequest<{ data: EBook[] }>('/api/books/user', { token: session.access_token })
-          : await apiRequest<{ data: EBook[] }>('/api/books');
-        setBooks(payload.data);
-        const cats = ['All', ...Array.from(new Set(payload.data.map((b: EBook) => b.category)))];
-        setCategories(cats);
+        const [booksResult, categoriesResult] = await Promise.allSettled([
+          session?.access_token
+            ? apiRequest<{ data: EBook[] }>('/api/books/user', { token: session.access_token })
+            : apiRequest<{ data: EBook[] }>('/api/books'),
+          apiRequest<{ data: Category[] }>('/api/categories'),
+        ]);
+
+        const nextBooks = booksResult.status === 'fulfilled' ? booksResult.value.data : [];
+        setBooks(nextBooks);
+
+        const categoryNames = new Set<string>([
+          ...nextBooks.map((book) => book.category).filter(Boolean),
+          ...(categoriesResult.status === 'fulfilled'
+            ? categoriesResult.value.data.map((item) => item.name).filter(Boolean)
+            : []),
+        ]);
+        setCategories(['All', ...Array.from(categoryNames).sort((left, right) => left.localeCompare(right))]);
+      } catch {
+        setBooks([]);
+        setCategories(['All']);
       } finally {
         setLoading(false);
       }
@@ -35,6 +53,16 @@ export default function BooksPage({ onNavigate }: BooksPageProps) {
 
     fetchBooks();
   }, [session?.access_token]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setFavoriteBookIds([]);
+      return;
+    }
+
+    const favorites = getFavoriteBooks(user.id);
+    setFavoriteBookIds(favorites.map((item) => item.bookId));
+  }, [user?.id]);
 
   const filtered = books.filter(b => {
     const matchSearch =
@@ -48,6 +76,27 @@ export default function BooksPage({ onNavigate }: BooksPageProps) {
   const unlockedCount = books.filter((b) => !(b as EBook & { is_locked?: boolean }).is_locked).length;
   const lockedCount = books.length - unlockedCount;
   const isAdmin = user?.role === 'admin';
+
+  const handleOpenBook = (book: EBook) => {
+    if (user?.id) {
+      trackRecentlyOpenedBook(user.id, book);
+    }
+
+    if (onOpenBookDetails) {
+      onOpenBookDetails(book);
+      return;
+    }
+    setSelectedBook(book);
+  };
+
+  const handleToggleFavorite = (book: EBook) => {
+    if (!user?.id) {
+      return;
+    }
+
+    const next = toggleFavoriteBook(user.id, book);
+    setFavoriteBookIds(next.map((item) => item.bookId));
+  };
 
   return (
     <div className="min-h-screen bg-slate-950">
@@ -103,7 +152,7 @@ export default function BooksPage({ onNavigate }: BooksPageProps) {
               </p>
             </div>
             <button
-              onClick={() => onNavigate('dashboard')}
+              onClick={() => onNavigate('subscription')}
               className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold text-sm px-4 py-2 rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
             >
               Get Subscription
@@ -170,7 +219,9 @@ export default function BooksPage({ onNavigate }: BooksPageProps) {
                 book={book}
                 isSubscribed={isSubscribed}
                 hideAccessStatus={isAdmin}
-                onRead={setSelectedBook}
+                onRead={handleOpenBook}
+                isFavorite={favoriteBookIds.includes(book.id)}
+                onToggleFavorite={handleToggleFavorite}
               />
             ))}
           </div>

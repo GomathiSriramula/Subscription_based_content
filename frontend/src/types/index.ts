@@ -7,6 +7,7 @@ export interface EBook {
   pdf_url: string;
   category: string;
   is_free?: boolean;
+  featured?: boolean;
   created_at: string;
 }
 
@@ -42,6 +43,27 @@ export interface SubscriptionPlan {
   name: string;
   amount: number;
   duration_days: number;
+}
+
+export interface PaymentTransaction {
+  id: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  plan_id: string | null;
+  plan_name: string;
+  amount_paise: number;
+  amount_inr: number;
+  payment_date: string | null;
+  status: string;
+  razorpay_payment_id: string | null;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface RazorpayOrderResponse {
@@ -96,6 +118,65 @@ export interface RazorpayFailureResponse {
       payment_id?: string;
     };
   };
+}
+
+export interface ChartPoint {
+  label: string;
+  value: number;
+}
+
+export interface RevenueChartPoint {
+  label: string;
+  value_paise: number;
+  value_inr: number;
+}
+
+export interface AdminAnalytics {
+  totals: {
+    total_users: number;
+    total_books: number;
+    active_subscriptions: number;
+    total_revenue_paise: number;
+    total_revenue_inr: number;
+    monthly_revenue_paise: number;
+    monthly_revenue_inr: number;
+  };
+  charts: {
+    revenue_last_6_months: RevenueChartPoint[];
+    subscriptions_last_6_months: ChartPoint[];
+  };
+  notifications: {
+    window_days: number;
+    new_users_count: number;
+    new_subscriptions_count: number;
+    recent_users: {
+      id: string;
+      name: string;
+      email: string;
+      created_at: string | null;
+    }[];
+    recent_subscriptions: {
+      id: string;
+      user_name: string;
+      user_email: string;
+      plan_name: string;
+      amount_inr: number;
+      created_at: string | null;
+    }[];
+  };
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  fullName: string;
+  role: 'user' | 'admin';
+  createdAt: string;
+  is_blocked: boolean;
+  blocked_at: string | null;
+  subscription_status: 'active' | 'pending' | 'expired' | 'none';
+  subscription_plan: string | null;
+  subscription_expiry_date: string | null;
 }
 
 declare global {
